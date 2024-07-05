@@ -31,7 +31,7 @@ pub(crate) use profiling_scopes::*;
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::ElementState,
-    event_loop::EventLoopWindowTarget,
+    event_loop::ActiveEventLoop,
     window::{CursorGrabMode, Window, WindowButtons, WindowLevel},
 };
 
@@ -474,13 +474,14 @@ impl State {
             // Things we completely ignore:
             WindowEvent::ActivationTokenDone { .. }
             | WindowEvent::AxisMotion { .. }
-            | WindowEvent::SmartMagnify { .. }
-            | WindowEvent::TouchpadRotate { .. } => EventResponse {
+            | WindowEvent::PanGesture { .. }
+            | WindowEvent::DoubleTapGesture { .. }
+            | WindowEvent::RotationGesture { .. } => EventResponse {
                 repaint: false,
                 consumed: false,
             },
 
-            WindowEvent::TouchpadMagnify { delta, .. } => {
+            WindowEvent::PinchGesture { delta, .. } => {
                 // Positive delta values indicate magnification (zooming in).
                 // Negative delta values indicate shrinking (zooming out).
                 let zoom_factor = (*delta as f32).exp();
@@ -880,7 +881,7 @@ impl State {
 
             if let Some(winit_cursor_icon) = translate_cursor(cursor_icon) {
                 window.set_cursor_visible(true);
-                window.set_cursor_icon(winit_cursor_icon);
+                window.set_cursor(winit_cursor_icon);
             } else {
                 window.set_cursor_visible(false);
             }
@@ -1510,28 +1511,28 @@ fn process_viewport_command(
 ///
 /// # Errors
 /// Possible causes of error include denied permission, incompatible system, and lack of memory.
-pub fn create_window<T>(
+pub fn create_window(
     egui_ctx: &egui::Context,
-    event_loop: &EventLoopWindowTarget<T>,
+    event_loop: &ActiveEventLoop,
     viewport_builder: &ViewportBuilder,
 ) -> Result<Window, winit::error::OsError> {
     crate::profile_function!();
 
-    let window_builder =
-        create_winit_window_builder(egui_ctx, event_loop, viewport_builder.clone());
+    let window_attributes =
+        create_winit_window_attributes(egui_ctx, event_loop, viewport_builder.clone());
     let window = {
         crate::profile_scope!("WindowBuilder::build");
-        window_builder.build(event_loop)?
+        event_loop.create_window(window_attributes)?
     };
     apply_viewport_builder_to_window(egui_ctx, &window, viewport_builder);
     Ok(window)
 }
 
-pub fn create_winit_window_builder<T>(
+pub fn create_winit_window_attributes(
     egui_ctx: &egui::Context,
-    event_loop: &EventLoopWindowTarget<T>,
+    event_loop: &ActiveEventLoop,
     viewport_builder: ViewportBuilder,
-) -> winit::window::WindowBuilder {
+) -> winit::window::WindowAttributes {
     crate::profile_function!();
 
     // We set sizes and positions in egui:s own ui points, which depends on the egui
@@ -1590,7 +1591,7 @@ pub fn create_winit_window_builder<T>(
         clamp_size_to_monitor_size: _, // Handled in `viewport_builder` in `epi_integration.rs`
     } = viewport_builder;
 
-    let mut window_builder = winit::window::WindowBuilder::new()
+    let mut window_builder = winit::window::WindowAttributes::default()
         .with_title(title.unwrap_or_else(|| "egui window".to_owned()))
         .with_transparent(transparent.unwrap_or(false))
         .with_decorations(decorations.unwrap_or(true))
@@ -1685,7 +1686,7 @@ pub fn create_winit_window_builder<T>(
 
     #[cfg(target_os = "windows")]
     {
-        use winit::platform::windows::WindowBuilderExtWindows as _;
+        use winit::platform::windows::WindowAttributesExtWindows as _;
         if let Some(enable) = _drag_and_drop {
             window_builder = window_builder.with_drag_and_drop(enable);
         }
@@ -1828,10 +1829,11 @@ pub fn short_window_event_description(event: &winit::event::WindowEvent) -> &'st
         WindowEvent::CursorLeft { .. } => "WindowEvent::CursorLeft",
         WindowEvent::MouseWheel { .. } => "WindowEvent::MouseWheel",
         WindowEvent::MouseInput { .. } => "WindowEvent::MouseInput",
-        WindowEvent::TouchpadMagnify { .. } => "WindowEvent::TouchpadMagnify",
+        WindowEvent::PinchGesture { .. } => "WindowEvent::PinchGesture",
+        WindowEvent::PanGesture { .. } => "WindowEvent::PanGesture",
         WindowEvent::RedrawRequested { .. } => "WindowEvent::RedrawRequested",
-        WindowEvent::SmartMagnify { .. } => "WindowEvent::SmartMagnify",
-        WindowEvent::TouchpadRotate { .. } => "WindowEvent::TouchpadRotate",
+        WindowEvent::DoubleTapGesture { .. } => "WindowEvent::DoubleTapGesture",
+        WindowEvent::RotationGesture { .. } => "WindowEvent::RotationGesture",
         WindowEvent::TouchpadPressure { .. } => "WindowEvent::TouchpadPressure",
         WindowEvent::AxisMotion { .. } => "WindowEvent::AxisMotion",
         WindowEvent::Touch { .. } => "WindowEvent::Touch",
